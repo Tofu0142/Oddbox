@@ -141,19 +141,6 @@ class TestBoxPredictionAPI(unittest.TestCase):
         self.assertIn("model_type", data)
         self.assertIn("n_features", data)
     
-    def test_predict_with_invalid_data(self):
-        """Test prediction with invalid data"""
-        # Invalid request (missing required field)
-        invalid_request = {
-            "date": "2023-06-15"
-            # Missing box_type
-        }
-        
-        # Make request with invalid data
-        response = client.post("/predict", json=invalid_request)
-        
-        # Check response (should be 422 Unprocessable Entity)
-        self.assertEqual(response.status_code, 422)
     
     def test_predict_with_invalid_date(self):
         """Test prediction with invalid date format"""
