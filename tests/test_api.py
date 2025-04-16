@@ -1,15 +1,28 @@
 import unittest
 import json
-from fastapi.testclient import TestClient
+import sys
+import os
 from unittest.mock import patch, MagicMock
 import numpy as np
 import pandas as pd
 
-# Import the FastAPI app
-from app.main import app
+# Add the project root directory to Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Create test client
-client = TestClient(app)
+# Now import the FastAPI app
+try:
+    from app.main import app
+    from fastapi.testclient import TestClient
+    # Create test client
+    client = TestClient(app)
+except ImportError as e:
+    print(f"Import error: {e}")
+    print(f"Current sys.path: {sys.path}")
+    print(f"Current directory: {os.getcwd()}")
+    print(f"Directory contents: {os.listdir('.')}")
+    if os.path.exists('app'):
+        print(f"app directory contents: {os.listdir('app')}")
+    raise
 
 class TestBoxPredictionAPI(unittest.TestCase):
     """Test cases for Box Prediction API endpoints"""
@@ -44,7 +57,7 @@ class TestBoxPredictionAPI(unittest.TestCase):
             ]
         }
     
-    @patch('app.services.model_service.model')
+    @patch('app.services.model_service.model', new_callable=MagicMock)
     def test_health_endpoint(self, mock_model):
         """Test the health check endpoint"""
         # Configure mock
