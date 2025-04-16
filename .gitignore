@@ -5,3 +5,8 @@
 *.joblib
 *.joblib
 models/*.pkl
+average_orders_by_box_type.png
+box_type_predictions_detail.png
+correlation_matrix.png
+feature_correlation_heatmap.png
+feature_importance.csv
