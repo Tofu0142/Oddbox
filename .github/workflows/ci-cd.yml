@@ -57,7 +57,7 @@ jobs:
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
-    # 只在主分支上构建和推送镜像
+    
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     
     steps:
@@ -91,30 +91,12 @@ jobs:
         cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/box-order-prediction:buildcache
         cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/box-order-prediction:buildcache,mode=max
 
-  deploy:
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+  # deploy:
+  #   needs: build-and-push
+  #   if: github.ref == 'refs/heads/main'
+  #   runs-on: ubuntu-latest
     
-    steps:
-    - name: Deploy to production
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.DEPLOY_HOST }}
-        username: ${{ secrets.DEPLOY_USERNAME }}
-        key: ${{ secrets.DEPLOY_KEY }}
-        script: |
-          cd /path/to/deployment
-          docker-compose pull
-          docker-compose up -d
-          
-    - name: Notify deployment
-      uses: rtCamp/action-slack-notify@v2
-      env:
-        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-        SLACK_CHANNEL: deployments
-        SLACK_COLOR: good
-        SLACK_ICON: https://github.com/rtCamp.png?size=48
-        SLACK_MESSAGE: 'Box Order Prediction API deployed to production :rocket:'
-        SLACK_TITLE: Deployment Successful
-        SLACK_USERNAME: GitHub Actions 
+    #steps:
+#   - name: Deploy to production
+#     run: |
+#       echo "Deploying to production..."
