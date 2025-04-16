@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 # Now import the FastAPI app
 try:
-    from app.main import app
+    from app.app import app
     from fastapi.testclient import TestClient
     # Create test client
     client = TestClient(app)
