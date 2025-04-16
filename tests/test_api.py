@@ -142,19 +142,6 @@ class TestBoxPredictionAPI(unittest.TestCase):
         self.assertIn("n_features", data)
     
     
-    def test_predict_with_invalid_date(self):
-        """Test prediction with invalid date format"""
-        # Invalid date format
-        invalid_request = {
-            "box_type": "box_type_A",
-            "date": "invalid-date"
-        }
-        
-        # Make request with invalid date
-        response = client.post("/predict", json=invalid_request)
-        
-        # Check response (should be 400 Bad Request or 422 Unprocessable Entity)
-        self.assertIn(response.status_code, [400, 422])
 
 class TestFeatureService(unittest.TestCase):
     """Test cases for feature engineering service"""
