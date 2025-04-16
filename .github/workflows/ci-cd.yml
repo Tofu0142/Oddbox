@@ -56,8 +56,9 @@ jobs:
 
   build-and-push:
     needs: test
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
+    # 只在主分支上构建和推送镜像
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     
     steps:
     - uses: actions/checkout@v3
@@ -75,7 +76,7 @@ jobs:
       id: meta
       uses: docker/metadata-action@v4
       with:
-        images: yourusername/box-order-prediction
+        images: ${{ secrets.DOCKERHUB_USERNAME }}/box-order-prediction
         tags: |
           type=ref,event=branch
           type=sha,format=short
@@ -87,8 +88,8 @@ jobs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=registry,ref=yourusername/box-order-prediction:buildcache
-        cache-to: type=registry,ref=yourusername/box-order-prediction:buildcache,mode=max
+        cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/box-order-prediction:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/box-order-prediction:buildcache,mode=max
 
   deploy:
     needs: build-and-push
