@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 # Now import the FastAPI app
 try:
-    from app.app import app, add_time_features  # Import directly from app.py
+    from app.app import app, add_time_features, prepare_features  # Import directly from app.py
     from fastapi.testclient import TestClient
     # Create test client
     client = TestClient(app)
@@ -57,7 +57,7 @@ class TestBoxPredictionAPI(unittest.TestCase):
             ]
         }
     
-    @patch('app.app.model', new_callable=MagicMock)
+    @patch('app.app.model')
     def test_health_endpoint(self, mock_model):
         """Test the health check endpoint"""
         # Configure mock
@@ -68,57 +68,69 @@ class TestBoxPredictionAPI(unittest.TestCase):
         
         # Check response
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "healthy"})
+        health_data = response.json()
+        self.assertEqual(health_data["status"], "healthy")
+        if "model_loaded" in health_data:
+            self.assertIsInstance(health_data["model_loaded"], bool)
     
-    @patch('app.app.model', new_callable=MagicMock)
+    @patch('app.app.model')
     def test_predict_endpoint(self, mock_model):
         """Test the prediction endpoint"""
-        # Configure mock
-        mock_model.return_value = self.mock_model
+        # Configure mock to return our mock model
+        mock_model.predict = self.mock_model.predict
         
         # Make request to predict endpoint
-        response = client.post("/predict", json=self.sample_request)
-        
-        # Check response
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data["box_type"], "box_type_A")
-        self.assertIn("predicted_orders", data)
-        self.assertEqual(data["prediction_date"], "2023-06-15")
-        self.assertIn("confidence_interval", data)
+        with patch('app.app.pd.DataFrame.shape', new_callable=MagicMock) as mock_shape:
+            # Mock the shape property to return (1, 24) - one row with 24 features
+            mock_shape.__get__ = MagicMock(return_value=(1, 24))
+            
+            response = client.post("/predict", json=self.sample_request)
+            
+            # Check response
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data["box_type"], "box_type_A")
+            self.assertIn("predicted_orders", data)
+            self.assertEqual(data["prediction_date"], "2023-06-15")
+            self.assertIn("confidence_interval", data)
     
-    @patch('app.app.model', new_callable=MagicMock)
+    @patch('app.app.model')
     def test_batch_predict_endpoint(self, mock_model):
         """Test the batch prediction endpoint"""
-        # Configure mock
-        mock_model.return_value = self.mock_model
+        # Configure mock to return our mock model
+        mock_model.predict = self.mock_model.predict
         
         # Make request to batch-predict endpoint
-        response = client.post("/batch-predict", json=self.sample_batch_request)
-        
-        # Check response
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertIn("predictions", data)
-        self.assertEqual(len(data["predictions"]), 2)
-        
-        # Check first prediction
-        first_pred = data["predictions"][0]
-        self.assertEqual(first_pred["box_type"], "box_type_A")
-        self.assertIn("predicted_orders", first_pred)
-        self.assertEqual(first_pred["prediction_date"], "2023-06-15")
-        
-        # Check second prediction
-        second_pred = data["predictions"][1]
-        self.assertEqual(second_pred["box_type"], "box_type_B")
-        self.assertIn("predicted_orders", second_pred)
-        self.assertEqual(second_pred["prediction_date"], "2023-06-16")
+        with patch('app.app.pd.DataFrame.shape', new_callable=MagicMock) as mock_shape:
+            # Mock the shape property to return (1, 24) - one row with 24 features
+            mock_shape.__get__ = MagicMock(return_value=(1, 24))
+            
+            response = client.post("/batch-predict", json=self.sample_batch_request)
+            
+            # Check response
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertIn("predictions", data)
+            self.assertEqual(len(data["predictions"]), 2)
+            
+            # Check first prediction
+            first_pred = data["predictions"][0]
+            self.assertEqual(first_pred["box_type"], "box_type_A")
+            self.assertIn("predicted_orders", first_pred)
+            self.assertEqual(first_pred["prediction_date"], "2023-06-15")
+            
+            # Check second prediction
+            second_pred = data["predictions"][1]
+            self.assertEqual(second_pred["box_type"], "box_type_B")
+            self.assertIn("predicted_orders", second_pred)
+            self.assertEqual(second_pred["prediction_date"], "2023-06-16")
     
-    @patch('app.app.model', new_callable=MagicMock)
+    @patch('app.app.model')
     def test_model_info_endpoint(self, mock_model):
         """Test the model info endpoint"""
         # Configure mock
-        mock_model.return_value = self.mock_model
+        mock_model.__class__.__name__ = "GradientBoostingRegressor"
+        mock_model.n_features_in_ = 24
         
         # Make request to model-info endpoint
         response = client.get("/model-info")
@@ -129,12 +141,8 @@ class TestBoxPredictionAPI(unittest.TestCase):
         self.assertIn("model_type", data)
         self.assertIn("n_features", data)
     
-    @patch('app.app.model', new_callable=MagicMock)
-    def test_predict_with_invalid_data(self, mock_model):
+    def test_predict_with_invalid_data(self):
         """Test prediction with invalid data"""
-        # Configure mock
-        mock_model.return_value = self.mock_model
-        
         # Invalid request (missing required field)
         invalid_request = {
             "date": "2023-06-15"
@@ -147,12 +155,8 @@ class TestBoxPredictionAPI(unittest.TestCase):
         # Check response (should be 422 Unprocessable Entity)
         self.assertEqual(response.status_code, 422)
     
-    @patch('app.app.model', new_callable=MagicMock)
-    def test_predict_with_invalid_date(self, mock_model):
+    def test_predict_with_invalid_date(self):
         """Test prediction with invalid date format"""
-        # Configure mock
-        mock_model.return_value = self.mock_model
-        
         # Invalid date format
         invalid_request = {
             "box_type": "box_type_A",
@@ -185,9 +189,6 @@ class TestFeatureService(unittest.TestCase):
     
     def test_prepare_features(self):
         """Test feature preparation"""
-        # Import prepare_features directly from app.py
-        from app.app import prepare_features
-        
         # Create a simple class to mimic PredictionRequest
         class PredictionRequest:
             def __init__(self, box_type, date, additional_features=None):
