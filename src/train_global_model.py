@@ -13,7 +13,7 @@ import xgboost as xgb
 import matplotlib.pyplot as plt
 import seaborn as sns
 # For Prophet model
-from train_model import add_time_features
+from src.train_model import add_time_features
 try:
     from prophet import Prophet
 except ImportError:
@@ -23,7 +23,7 @@ except ImportError:
 import warnings
 warnings.filterwarnings('ignore')
 # Import the data processing function
-from data_process import process_data
+
 def feature_engineering(df, forecast_periods=4):
         # Ensure data is sorted by week
     df = df.sort_values(['box_type', 'week'])
@@ -61,13 +61,6 @@ def feature_engineering(df, forecast_periods=4):
     numeric_features = train_data_with_features[feature_cols].select_dtypes(include=['number'])
     corr_matrix = numeric_features.corr()
     
-    # Plot correlation heatmap
-    plt.figure(figsize=(12, 10))
-    sns.heatmap(corr_matrix, annot=False, cmap='coolwarm', vmin=-1, vmax=1)
-    plt.title('Feature Correlation Heatmap')
-    plt.tight_layout()
-    plt.savefig('feature_correlation_heatmap.png')
-    print("Feature correlation heatmap saved as feature_correlation_heatmap.png")
     
     # Filter highly correlated features
     def filter_correlated_features(corr_matrix, threshold=0.8):
@@ -634,3 +627,212 @@ def train_global_model(df, forecast_periods=4):
     }
     
     return best_model, results, feature_importance
+
+def generate_forecasts(model, data, box_types, forecast_periods=4):
+    """
+    Generate forecasts for each box type using the provided model
+    
+    Parameters:
+    -----------
+    model : trained model object
+        The trained forecasting model
+    data : DataFrame
+        The processed data containing features
+    box_types : list
+        List of box types to generate forecasts for
+    forecast_periods : int
+        Number of periods to forecast ahead
+        
+    Returns:
+    --------
+    dict
+        Dictionary with box types as keys and forecast lists as values
+    """
+    print(f"\nGenerating forecasts for {len(box_types)} box types...")
+    
+    # Initialize forecasts dictionary
+    forecasts = {}
+    
+    # Check if data has box_type column or one-hot encoded columns
+    has_box_type_column = 'box_type' in data.columns
+    
+    # If one-hot encoded, calculate historical proportions differently
+    if not has_box_type_column:
+        # Check for box_* columns
+        box_columns = [col for col in data.columns if col.startswith('box_')]
+        
+        if not box_columns:
+            raise ValueError("Data must contain either 'box_type' column or 'box_*' columns")
+        
+        # Calculate historical proportions based on available data
+        box_proportions = {}
+        
+        # For each box type, find rows where that box type is True
+        for box_type in box_types:
+            box_col = f'box_{box_type}'
+            if box_col in data.columns:
+                # Get rows for this box type
+                box_data = data[data[box_col] == True]
+                if 'box_orders' in box_data.columns and not box_data['box_orders'].isna().all():
+                    # Calculate proportion based on sum of orders
+                    box_proportions[box_type] = box_data['box_orders'].sum()
+                else:
+                    # If no order data, use count of rows
+                    box_proportions[box_type] = len(box_data)
+            else:
+                # If column doesn't exist, use default proportion
+                box_proportions[box_type] = 1
+        
+        # Normalize proportions
+        total_all_orders = sum(box_proportions.values())
+        if total_all_orders > 0:
+            for box_type in box_types:
+                box_proportions[box_type] = box_proportions[box_type] / total_all_orders
+                print(f"Historical proportion for {box_type}: {box_proportions[box_type]:.2%}")
+    else:
+        # Original code for when box_type column exists
+        box_proportions = {}
+        total_orders = data.groupby('box_type')['box_orders'].sum()
+        total_all_orders = total_orders.sum()
+        
+        for box_type in box_types:
+            if box_type in total_orders:
+                box_proportions[box_type] = total_orders[box_type] / total_all_orders
+            else:
+                # Default proportion if box type not in data
+                box_proportions[box_type] = 1 / len(box_types)
+            print(f"Historical proportion for {box_type}: {box_proportions[box_type]:.2%}")
+    
+    # Check model type
+    model_type = type(model).__name__
+    
+    # For time series models like Prophet or ARIMA
+    if model_type in ['Prophet', 'ARIMAResults']:
+        print(f"Generating forecasts using {model_type} model...")
+        
+        if model_type == 'Prophet':
+            # For Prophet, create future dataframe
+            future = model.make_future_dataframe(periods=forecast_periods, freq='W')
+            forecast = model.predict(future)
+            total_forecast = forecast.tail(forecast_periods)['yhat'].values
+        else:
+            # For ARIMA, use forecast method
+            total_forecast = model.forecast(steps=forecast_periods)
+        
+        # Apply proportion to each box type
+        for box_type in box_types:
+            box_forecast = total_forecast * box_proportions[box_type]
+            forecasts[box_type] = list(np.maximum(0, box_forecast))
+    
+    # For ML models
+    else:
+        print(f"Generating forecasts using {model_type} model...")
+        
+        for box_type in box_types:
+            print(f"\nGenerating forecast for {box_type}...")
+            
+            # Get the last data point for this box type
+            if has_box_type_column:
+                last_data = data[data['box_type'] == box_type].tail(1).copy()
+            else:
+                box_col = f'box_{box_type}'
+                if box_col in data.columns:
+                    last_data = data[data[box_col] == True].tail(1).copy()
+                    if len(last_data) == 0:
+                        # If no data with True value, take the last row and set this box type to True
+                        last_data = data.tail(1).copy()
+                        for col in [c for c in data.columns if c.startswith('box_')]:
+                            last_data[col] = False
+                        last_data[box_col] = True
+                else:
+                    # If column doesn't exist, use the last row and create the column
+                    last_data = data.tail(1).copy()
+                    for col in [c for c in data.columns if c.startswith('box_')]:
+                        last_data[col] = False
+                    last_data[box_col] = True
+            
+            if len(last_data) == 0:
+                print(f"No data available for {box_type}. Using proportion-based forecast.")
+                # Use the proportion method as fallback
+                if 'total_forecast' not in locals():
+                    # Generate a simple forecast based on average
+                    avg_orders = data['box_orders'].mean() if 'box_orders' in data.columns and not data['box_orders'].isna().all() else 100
+                    total_forecast = np.array([avg_orders] * forecast_periods)
+                
+                box_forecast = total_forecast * box_proportions[box_type]
+                forecasts[box_type] = list(np.maximum(0, box_forecast))
+                continue
+            
+            # Initialize forecast list
+            future_forecast = []
+            
+            # Get feature names
+            if hasattr(model, 'feature_names_in_'):
+                feature_names = model.feature_names_in_
+            else:
+                # For models without feature_names_in_ attribute
+                feature_names = [col for col in data.columns 
+                               if col not in ['week', 'box_type', 'box_orders']]
+            
+            # Make forecasts for each future period
+            future_data = last_data.copy()
+            
+            for i in range(forecast_periods):
+                # Update date-related features
+                if 'week' in future_data.columns:
+                    future_date = future_data['week'].iloc[0] + pd.Timedelta(weeks=i+1)
+                    future_data['week'] = future_date
+                
+                    # Update time features
+                    if 'month' in feature_names:
+                        future_data['month'] = future_date.month
+                    if 'day_of_year' in feature_names:
+                        future_data['day_of_year'] = future_date.dayofyear
+                    if 'week_of_year' in feature_names:
+                        future_data['week_of_year'] = future_date.isocalendar()[1]
+                    if 'quarter' in feature_names:
+                        future_data['quarter'] = (future_date.month - 1) // 3 + 1
+                    if 'day_of_week' in feature_names:
+                        future_data['day_of_week'] = future_date.weekday()
+                    
+                    # Update cyclical features if they exist
+                    if 'month_sin' in feature_names:
+                        future_data['month_sin'] = np.sin(2 * np.pi * future_data['month'] / 12)
+                        future_data['month_cos'] = np.cos(2 * np.pi * future_data['month'] / 12)
+                    if 'week_of_year_sin' in feature_names:
+                        future_data['week_of_year_sin'] = np.sin(2 * np.pi * future_data['week_of_year'] / 53)
+                        future_data['week_of_year_cos'] = np.cos(2 * np.pi * future_data['week_of_year'] / 53)
+                
+                # Update lag features with previous predictions
+                if i > 0:
+                    for lag in range(1, 5):
+                        lag_col = f'lag_{lag}'
+                        if lag_col in feature_names:
+                            if lag == 1:
+                                future_data[lag_col] = future_forecast[-1]
+                            elif i >= lag:
+                                future_data[lag_col] = future_forecast[i-lag]
+                    
+                    # Update rolling features
+                    if 'rolling_mean_4' in feature_names and i >= 3:
+                        recent_values = future_forecast[i-4:i]
+                        future_data['rolling_mean_4'] = np.mean(recent_values)
+                        if 'rolling_std_4' in feature_names:
+                            future_data['rolling_std_4'] = np.std(recent_values)
+                        if 'rolling_min_4' in feature_names:
+                            future_data['rolling_min_4'] = np.min(recent_values)
+                        if 'rolling_max_4' in feature_names:
+                            future_data['rolling_max_4'] = np.max(recent_values)
+                
+                # Select only the features the model knows about
+                X_future = future_data[feature_names]
+                
+                # Make prediction
+                prediction = model.predict(X_future)[0]
+                prediction = max(0, prediction)  # Ensure non-negative
+                future_forecast.append(prediction)
+            
+            # Store forecast
+            forecasts[box_type] = future_forecast
+    
+    return forecasts

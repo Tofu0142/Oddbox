@@ -101,19 +101,18 @@ def fine_tune_gradient_boosting(X_train, y_train, X_test, y_test, feature_names=
     
     # Get feature importance
     if feature_names is not None:
-        # 使用传入的特征名称
+       
         feature_cols = feature_names
     elif hasattr(X_train, 'columns'):
-        # 如果X_train是DataFrame
+        
         feature_cols = X_train.columns.tolist()
     else:
-        # 如果X_train是numpy数组，创建通用特征名称
+        #
         feature_cols = [f'feature_{i}' for i in range(X_train.shape[1])]
     
-    # 确保X_train是数组格式
     X_train_array = X_train.values if hasattr(X_train, 'values') else X_train
     
-    # 创建特征重要性DataFrame
+  
     feature_importance = pd.DataFrame({
         'Feature': feature_cols,
         'Importance': best_gb.feature_importances_

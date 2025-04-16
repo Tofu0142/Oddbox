@@ -23,7 +23,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Import the data processing function
-from data_process import process_data
+from src.data_process import process_data
 
 def add_time_features(data, target_col, is_train=True, train_data=None):
     """
@@ -530,97 +530,3 @@ def train_and_evaluate_models(box_type_data, forecast_periods=4):
     else:
         print(f"No successful models for {box_type}")
         return None, None
-
-def main():
-    # Process the data first (if raw data is provided)
-    import argparse
-    import os
-    
-    parser = argparse.ArgumentParser(description='Train demand forecasting models')
-    parser.add_argument('--input', default='data.csv', help='Path to the processed data file (default: data.csv)')
-    parser.add_argument('--raw', help='Path to raw data file (if data needs processing)')
-    
-    args = parser.parse_args()
-    
-    # If raw data is provided, process it first
-    if args.raw and os.path.exists(args.raw):
-        print(f"Processing raw data from {args.raw}...")
-        df = process_data(args.raw, args.input)
-        print(f"Data processed and saved to {args.input}")
-    else:
-        # Load already processed data
-        if not os.path.exists(args.input):
-            raise FileNotFoundError(f"Data file {args.input} not found. Please provide a valid data file or use --raw to process raw data.")
-        
-        df = pd.read_csv(args.input)
-        df['week'] = pd.to_datetime(df['week'])
-    
-    # Get unique box types
-    box_types = df['box_type'].unique()
-    
-    # Store results for all box types
-    all_results = {}
-    best_models = {}
-    
-    # Train models for each box type
-    for box_type in box_types:
-        print(f"\nProcessing box type: {box_type}")
-        box_data = df[df['box_type'] == box_type].copy()
-        
-        # Skip if not enough data
-        if len(box_data) < 10:
-            print(f"Not enough data for {box_type}. Skipping.")
-            continue
-        
-        # Train and evaluate models
-        results, best_model_name = train_and_evaluate_models(box_data)
-        
-        if results:
-            all_results[box_type] = results
-            best_models[box_type] = best_model_name
-    
-    # Create forecast summary
-    forecast_summary = []
-    for box_type in all_results:
-        best_model_name = best_models[box_type]
-        result = all_results[box_type][best_model_name]
-        
-        future_values = result['future_forecast'].values
-        
-        for i, value in enumerate(future_values):
-            forecast_summary.append({
-                'box_type': box_type,
-                'model': best_model_name,
-                'forecast_week': i+1,
-                'forecast_value': value,
-                'mae': result['mae'],
-                'rmse': result['rmse']
-            })
-    
-    # Create forecast summary dataframe
-    forecast_df = pd.DataFrame(forecast_summary)
-    forecast_df.to_csv('box_demand_forecast.csv', index=False)
-    
-    # Create pivot table for easier reading
-    forecast_pivot = forecast_df.pivot_table(
-        index=['box_type', 'model', 'mae', 'rmse'], 
-        columns='forecast_week', 
-        values='forecast_value'
-    )
-    forecast_pivot.columns = [f'Week {i}' for i in forecast_pivot.columns]
-    forecast_pivot.to_csv('box_demand_forecast_pivot.csv')
-    
-    # Calculate total forecasted demand for next 4 weeks
-    total_forecast = {}
-    for week in range(1, 5):
-        week_data = forecast_df[forecast_df['forecast_week'] == week]
-        total_forecast[f'week_{week}'] = week_data['forecast_value'].sum()
-    
-    print("\nTotal forecasted box demand for next 4 weeks:")
-    for week, total in total_forecast.items():
-        print(f"{week}: {total:.0f} boxes")
-    
-    print("\nForecast results saved to 'box_demand_forecast.csv' and 'box_demand_forecast_pivot.csv'")
-
-if __name__ == "__main__":
-    main()
