@@ -131,15 +131,15 @@ def feature_engineering(df, forecast_periods=4):
     X_test = test_data_with_features[feature_cols]
     y_test = test_data_with_features['box_orders']
     
-    # 确保X_train是DataFrame并保存特征名称
+    #
     if isinstance(X_train, np.ndarray):
-        # 如果X_train已经是numpy数组，使用feature_cols作为特征名称
+        
         feature_names = feature_cols
     else:
-        # 如果X_train是DataFrame，获取列名
+        
         feature_names = X_train.columns.tolist()
     
-    # 如果需要将X_train转换为数组
+   
     X_train_array = X_train.values if hasattr(X_train, 'values') else X_train
     
     return X_train, X_test, y_train, y_test, feature_names, test_data_with_features, train_data_with_features

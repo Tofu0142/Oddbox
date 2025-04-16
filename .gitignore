@@ -1,5 +1,7 @@
 *.csv
 *.pkl
+*.png
+*.PNG
 *.joblib
 *.joblib
 models/*.pkl
